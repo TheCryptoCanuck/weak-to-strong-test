@@ -20,6 +20,7 @@ const _rarityColors = {
   'uncommon': Color(0xFF4CAF50),
   'rare': Color(0xFF2196F3),
   'legendary': Colors.amber,
+  'unknown': Color(0xFFCE93D8), // soft purple — a mystery find
 };
 
 // ─── Data Model ───────────────────────────────────────────────────────────────
@@ -1120,6 +1121,22 @@ String levelTitle(int level) {
 
 int xpForNextLevel(int level) => (1000 * pow(level, 1.4)).round();
 
+/// Returns a placeholder Bird for any species name not found in [birds].
+/// The stored Hive name is preserved so the real data can be filled in
+/// when the database is updated — no silent data corruption.
+Bird unknownBird(String name) => Bird(
+  name: name,
+  scientificName: 'Species not yet in database',
+  imageUrl: '',
+  audioUrl: '',
+  lore: 'You found something we\'ve never seen before! This species isn\'t in our database yet. '
+      'Your discovery has been logged and will help us grow AviQuest.',
+  habitat: 'Unknown',
+  conservationStatus: 'Unknown',
+  rarity: 'unknown',
+  baseXp: 100, // reward curiosity
+);
+
 /// Weighted random bird pick: common 60%, uncommon 25%, rare 12%, legendary 3%
 Bird _weightedRandomBird(Random rng) {
   final r = rng.nextDouble();
@@ -1299,6 +1316,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showFoundDialog(Bird bird) {
+    final isUnknown = bird.rarity == 'unknown';
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -1318,14 +1336,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   border: Border.all(color: bird.rarityColor),
                 ),
                 child: Text(
-                  bird.rarity.toUpperCase(),
+                  isUnknown ? 'NEW DISCOVERY' : bird.rarity.toUpperCase(),
                   style: TextStyle(color: bird.rarityColor, fontWeight: FontWeight.bold, fontSize: 12),
                 ),
               ).animate().fadeIn().scale(),
               const SizedBox(height: 12),
               Text(
-                '✨ ${bird.name}',
-                style: const TextStyle(color: Colors.amber, fontSize: 22, fontWeight: FontWeight.bold),
+                isUnknown ? '🔭 ${bird.name}' : '✨ ${bird.name}',
+                style: TextStyle(
+                  color: isUnknown ? bird.rarityColor : Colors.amber,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
                 textAlign: TextAlign.center,
               ).animate().fadeIn(delay: 100.ms),
               Text(
@@ -1333,10 +1355,28 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: const TextStyle(color: Colors.white54, fontStyle: FontStyle.italic),
               ),
               const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: _buildNetworkImage(bird.imageUrl, 220),
-              ).animate().fadeIn(delay: 200.ms).scale(begin: const Offset(0.95, 0.95)),
+              if (isUnknown)
+                Container(
+                  height: 140,
+                  decoration: BoxDecoration(
+                    color: bird.rarityColor.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: bird.rarityColor.withOpacity(0.4)),
+                  ),
+                  child: Center(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text('❓', style: TextStyle(fontSize: 56)),
+                      const SizedBox(height: 6),
+                      Text('Not in our database yet',
+                          style: TextStyle(color: bird.rarityColor, fontWeight: FontWeight.bold)),
+                    ]),
+                  ),
+                ).animate().fadeIn(delay: 200.ms)
+              else
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: _buildNetworkImage(bird.imageUrl, 220),
+                ).animate().fadeIn(delay: 200.ms).scale(begin: const Offset(0.95, 0.95)),
               const SizedBox(height: 12),
               Text(bird.lore, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
               const SizedBox(height: 8),
@@ -1485,8 +1525,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: bird.rarityColor),
                 ),
-                child: Text(bird.rarity.toUpperCase(),
-                  style: TextStyle(color: bird.rarityColor, fontWeight: FontWeight.bold)),
+                child: Text(
+                  bird.rarity == 'unknown' ? 'NEW DISCOVERY' : bird.rarity.toUpperCase(),
+                  style: TextStyle(color: bird.rarityColor, fontWeight: FontWeight.bold),
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -1496,10 +1538,28 @@ class _HomeScreenState extends State<HomeScreen> {
             Center(child: Text(bird.scientificName,
               style: const TextStyle(color: Colors.white54, fontStyle: FontStyle.italic))),
             const SizedBox(height: 16),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: _buildNetworkImage(bird.imageUrl, 240),
-            ),
+            if (bird.rarity == 'unknown')
+              Container(
+                height: 160,
+                decoration: BoxDecoration(
+                  color: bird.rarityColor.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: bird.rarityColor.withOpacity(0.4)),
+                ),
+                child: Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Text('❓', style: TextStyle(fontSize: 64)),
+                    const SizedBox(height: 6),
+                    Text('Photo not yet in database',
+                        style: TextStyle(color: bird.rarityColor)),
+                  ]),
+                ),
+              )
+            else
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: _buildNetworkImage(bird.imageUrl, 240),
+              ),
             const SizedBox(height: 16),
             _detailRow(Icons.auto_stories, 'Lore', bird.lore),
             _detailRow(Icons.landscape, 'Habitat', bird.habitat),
@@ -1661,7 +1721,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (birdName == null) return const SizedBox.shrink(); // FIX 5: null guard
             final bird = birds.firstWhere(
               (b) => b.name == birdName,
-              orElse: () => birds.first,
+              orElse: () => unknownBird(birdName),
             );
             return GestureDetector(
               onTap: () => _showBirdDetail(bird),
