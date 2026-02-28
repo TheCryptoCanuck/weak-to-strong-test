@@ -1,3 +1,7 @@
+import argparse
+import json
+import os
+
 import openai
 import matplotlib.pyplot as plt
 from tqdm import tqdm
